@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REDOM | Galaxy Gesture Playground</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <style>
+        :root {
+            --bg: #050508;
+            --panel: rgba(10, 10, 15, 0.9);
+            --accent: #7000ff;
+            --text: #ffffff;
+        }
+
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            background-color: var(--bg);
+            font-family: 'Inter', sans-serif;
+            color: var(--text);
+        }
+
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+        .brand {
+            position: absolute; top: 20px; left: 20px;
+            font-weight: 900; letter-spacing: 5px;
+            color: #fff; text-shadow: 0 0 15px rgba(112, 0, 255, 0.8);
+            z-index: 10; font-size: 1.2rem;
+        }
+
+        .ui-panel {
+            position: absolute; top: 20px; right: 20px;
+            width: 260px; padding: 20px;
+            background: var(--panel);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            z-index: 10;
+            display: flex; flex-direction: column; gap: 18px;
+        }
+
+        .section-title { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 2px; opacity: 0.5; }
+
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .grid-btn {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white; padding: 12px; border-radius: 12px;
+            cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 0.85rem;
+        }
+        .grid-btn:hover { background: rgba(255,255,255,0.1); transform: translateY(-2px); }
+        .grid-btn.active { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 15px rgba(112, 0, 255, 0.4); }
+
+        .control-group { display: flex; flex-direction: column; gap: 8px; }
+        input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+        .row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; }
+
+        #video-container {
+            position: absolute; bottom: 20px; left: 20px;
+            width: 140px; height: 105px;
+            border-radius: 15px; border: 1px solid rgba(255,255,255,0.2);
+            overflow: hidden; transform: scaleX(-1);
+            background: #000; box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+
+        #loader {
+            position: fixed; inset: 0; background: #000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100; transition: opacity 0.8s;
+        }
+        .btn-start {
+            padding: 18px 45px; border-radius: 40px; border: none;
+            background: #fff; color: #000; font-weight: 800; cursor: pointer;
+            letter-spacing: 1px; transition: 0.3s;
+        }
+        .btn-start:hover { transform: scale(1.05); box-shadow: 0 0 30px rgba(255,255,255,0.3); }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <h2 style="letter-spacing: 5px; margin-bottom: 40px;">GALAXY SYSTEM</h2>
+        <button class="btn-start" onclick="initApp()">INITIALIZE</button>
+    </div>
+
+    <div class="brand">REDOM</div>
+
+    <div class="ui-panel">
+        <div class="control-group">
+            <div class="section-title">Celestial Body</div>
+            <div class="grid">
+                <button class="grid-btn active" onclick="setShape('galaxy')">Galaxy</button>
+                <button class="grid-btn" onclick="setShape('saturn')">Saturn</button>
+                <button class="grid-btn" onclick="setShape('heart')">Nebula</button>
+                <button class="grid-btn" onclick="setShape('flower')">Supernova</button>
+                <button class="grid-btn" style="grid-column: span 2" onclick="setShape('burst')">Big Bang</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="section-title">Star Appearance</div>
+            <div class="row"><span>Star Color</span><input type="range" id="hue" min="0" max="1" step="0.01" value="0.65"></div>
+            <div class="row"><span>Brightness</span><input type="range" id="pSize" min="0.5" max="10" step="0.1" value="3.5"></div>
+        </div>
+
+        <div class="control-group">
+            <div class="section-title">Physics</div>
+            <div class="row"><span>Stellar Noise</span><input type="range" id="noise" min="0" max="10" step="0.1" value="1.2"></div>
+            <div class="row"><span>Gestures</span> <input type="checkbox" id="camToggle" checked></div>
+        </div>
+        
+        <button class="grid-btn" style="margin-top:5px; background: none; border: 1px solid rgba(255,255,255,0.2)" onclick="takeSnapshot()">EXPORT PNG</button>
+    </div>
+
+    <div id="video-container"><video id="input-video" playsinline></video></div>
+    <div id="canvas-container"></div>
+
+    <script id="vertexShader" type="x-shader/x-vertex">
+        uniform float uTime;
+        uniform float uScale;
+        uniform float uSpread;
+        uniform float uNoise;
+        uniform float uSize;
+        attribute vec3 targetPos;
+        varying float vDistance;
+        
+        void main() {
+            vec3 pos = mix(position, targetPos, uSpread);
+            
+            // Subtle orbital drift
+            float angle = uTime * 0.1;
+            float cosA = cos(angle);
+            float sinA = sin(angle);
+            pos.xz = mat2(cosA, -sinA, sinA, cosA) * pos.xz;
+
+            pos *= uScale;
+            
+            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+            vDistance = length(pos);
+            
+            // Star size attenuation
+            gl_PointSize = uSize * (400.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    </script>
+
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform vec3 uColor;
+        varying float vDistance;
+        void main() {
+            // Star Point Shape: Bright core with soft glow
+            float d = distance(gl_PointCoord, vec2(0.5));
+            float strength = 0.05 / d;
+            strength = pow(strength, 2.0);
+            
+            // Color shift based on distance from center
+            vec3 starColor = mix(uColor, vec3(1.0), 0.3 / (vDistance * 0.05 + 1.0));
+            
+            gl_FragColor = vec4(starColor, strength * 0.8);
+        }
+    </script>
+
+    <script>
+        let scene, camera, renderer, particles, material;
+        let videoElement, hands;
+        let particleCount = 25000; // Increased for galaxy density
+        let gestureData = { scale: 1.0, spread: 0.8 };
+        let targetGesture = { scale: 1.0, spread: 0.8 };
+
+        async function initApp() {
+            document.getElementById('loader').style.opacity = '0';
+            setTimeout(() => document.getElementById('loader').style.display = 'none', 800);
+            setupThree();
+            setupHands();
+            animate();
+        }
+
+        function setupThree() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 2000);
+            camera.position.set(0, 40, 120);
+            camera.lookAt(0,0,0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const targets = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i*3] = (Math.random()-0.5)*200;
+                positions[i*3+1] = (Math.random()-0.5)*200;
+                positions[i*3+2] = (Math.random()-0.5)*200;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.setAttribute('targetPos', new THREE.BufferAttribute(targets, 3));
+
+            material = new THREE.ShaderMaterial({
+                uniforms: {
+                    uTime: { value: 0 },
+                    uScale: { value: 1.0 },
+                    uSpread: { value: 0.8 },
+                    uSize: { value: 3.5 },
+                    uColor: { value: new THREE.Color(0x7000ff) }
+                },
+                vertexShader: document.getElementById('vertexShader').textContent,
+                fragmentShader: document.getElementById('fragmentShader').textContent,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+            updateShapeData('galaxy');
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function setupHands() {
+            videoElement = document.getElementById('input-video');
+            hands = new Hands({ locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}` });
+            hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6 });
+            hands.onResults(results => {
+                if (!document.getElementById('camToggle').checked) return;
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    let openSum = 0;
+                    results.multiHandLandmarks.forEach(hl => {
+                        openSum += Math.hypot(hl[4].x - hl[20].x, hl[4].y - hl[20].y);
+                    });
+                    targetGesture.spread = THREE.MathUtils.mapLinear(openSum / results.multiHandLandmarks.length, 0.05, 0.3, 0.1, 1.5);
+                    
+                    if (results.multiHandLandmarks.length === 2) {
+                        const d = Math.hypot(results.multiHandLandmarks[0][0].x - results.multiHandLandmarks[1][0].x);
+                        targetGesture.scale = THREE.MathUtils.mapLinear(d, 0.2, 0.8, 0.4, 2.5);
+                    }
+                }
+            });
+            new Camera(videoElement, { onFrame: async () => { await hands.send({image: videoElement}); }, width: 480, height: 360 }).start();
+        }
+
+        function updateShapeData(type) {
+            const targets = particles.geometry.attributes.targetPos.array;
+            for (let i = 0; i < particleCount; i++) {
+                let x, y, z;
+                const i3 = i * 3;
+
+                if (type === 'galaxy') {
+                    const angle = Math.random() * Math.PI * 2;
+                    const radius = Math.random() * 60;
+                    const spiral = radius * 0.5;
+                    x = Math.cos(angle + spiral) * radius;
+                    z = Math.sin(angle + spiral) * radius;
+                    y = (Math.random() - 0.5) * (10 * (1.0 - radius/60.0)); // Thin disk
+                } else if (type === 'saturn') {
+                    if (i < particleCount * 0.4) {
+                        const u = Math.random() * 2 - 1;
+                        const t = Math.random() * Math.PI * 2;
+                        const r = 22;
+                        x = r * Math.sqrt(1 - u*u) * Math.cos(t);
+                        y = r * Math.sqrt(1 - u*u) * Math.sin(t);
+                        z = r * u;
+                    } else {
+                        const r = 35 + Math.random() * 15;
+                        const t = Math.random() * Math.PI * 2;
+                        x = Math.cos(t) * r;
+                        z = Math.sin(t) * r;
+                        y = (Math.random()-0.5) * 2;
+                    }
+                } else if (type === 'heart') { // Nebula
+                    const t = Math.random() * Math.PI * 2;
+                    x = 16 * Math.pow(Math.sin(t), 3) * 2.5;
+                    y = (13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)) * 2.5;
+                    z = (Math.random()-0.5) * 20;
+                } else { // Burst / Supernova
+                    const r = Math.random() * 70;
+                    const u = Math.random() * 2 - 1;
+                    const t = Math.random() * Math.PI * 2;
+                    x = r * Math.sqrt(1 - u*u) * Math.cos(t);
+                    y = r * Math.sqrt(1 - u*u) * Math.sin(t);
+                    z = r * u;
+                }
+
+                targets[i3] = x;
+                targets[i3+1] = y;
+                targets[i3+2] = z;
+            }
+            particles.geometry.attributes.targetPos.needsUpdate = true;
+        }
+
+        function setShape(type) {
+            updateShapeData(type);
+            document.querySelectorAll('.grid-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            gestureData.scale += (targetGesture.scale - gestureData.scale) * 0.05;
+            gestureData.spread += (targetGesture.spread - gestureData.spread) * 0.05;
+
+            material.uniforms.uTime.value += 0.01;
+            material.uniforms.uScale.value = gestureData.scale;
+            material.uniforms.uSpread.value = gestureData.spread;
+            material.uniforms.uSize.value = parseFloat(document.getElementById('pSize').value);
+            
+            const color = new THREE.Color().setHSL(document.getElementById('hue').value, 0.9, 0.6);
+            material.uniforms.uColor.value = color;
+
+            particles.rotation.y += 0.001;
+            renderer.render(scene, camera);
+        }
+
+        function takeSnapshot() {
+            const link = document.createElement('a');
+            link.download = 'REDOM_Galaxy.png';
+            link.href = renderer.domElement.toDataURL("image/png");
+            link.click();
+        }
+    </script>
+</body>
+</html>
