@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>COSMIC ARENA // SIGMA EDITION</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { 
+            margin: 0; 
+            background-color: #020205; 
+            color: #00f2ff; 
+            font-family: 'Orbitron', sans-serif; 
+            overflow: hidden; 
+            touch-action: none; 
+            cursor: crosshair;
+            user-select: none;
+        }
+        canvas { display: block; }
+        
+        .ui-layer { 
+            position: absolute; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            pointer-events: none; 
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 20;
+        }
+
+        .joystick-zone {
+            position: absolute;
+            bottom: 30px;
+            width: 140px; height: 140px;
+            background: rgba(0, 242, 255, 0.05);
+            border: 2px solid rgba(0, 242, 255, 0.15);
+            border-radius: 50%;
+            pointer-events: auto;
+            touch-action: none;
+            display: none;
+        }
+        #left-zone { left: 30px; }
+        #right-zone { right: 30px; }
+
+        .knob {
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 60px; height: 60px;
+            background: rgba(0, 242, 255, 0.2);
+            border: 2px solid #00f2ff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        #ult-btn {
+            position: absolute;
+            bottom: 40px; left: 50%;
+            transform: translateX(-50%);
+            width: 70px; height: 70px;
+            background: rgba(255, 0, 234, 0.1);
+            border: 2px solid #ff00ea;
+            border-radius: 50%;
+            display: none;
+            align-items: center; justify-content: center;
+            color: #ff00ea; font-weight: bold;
+            pointer-events: auto; z-index: 30;
+        }
+        
+        .ult-ready { 
+            background: rgba(255, 0, 234, 0.5) !important;
+            box-shadow: 0 0 20px #ff00ea;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse { 0%, 100% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.1); } }
+
+        #overlay-screen {
+            position: absolute; inset: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 100; pointer-events: auto;
+        }
+
+        #sigma-quote {
+            color: #ffcc00;
+            font-size: 16px;
+            margin-bottom: 25px;
+            font-style: italic;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 0 10px;
+        }
+
+        .leaderboard-panel {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: #000;
+            border: 2px solid #ffcc00;
+            padding: 20px;
+            width: 280px;
+            z-index: 110;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Mobile Controls -->
+    <div id="left-zone" class="joystick-zone"><div class="knob" id="left-knob"></div></div>
+    <div id="right-zone" class="joystick-zone"><div class="knob" id="right-knob"></div></div>
+    <div id="ult-btn" onclick="triggerUlt()">ULT</div>
+
+    <!-- UI -->
+    <div class="ui-layer">
+        <div class="flex justify-between items-start">
+            <div class="pointer-events-auto">
+                <div class="w-40 h-2 bg-gray-900 border border-cyan-500">
+                    <div id="hp-bar" class="h-full bg-cyan-400 w-full transition-all"></div>
+                </div>
+                <p class="text-xl mt-2" id="score-text">INTEL: 0</p>
+                <p id="ult-status" class="text-xs text-pink-500">ULT: CHARGING...</p>
+            </div>
+            <div class="text-right">
+                <p id="stage-text" class="text-yellow-400">STAGE: DEEP_SPACE</p>
+                <p id="mission-text" class="text-[10px] text-cyan-400">STATUS: CLEAR</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu / Game Over Screen -->
+    <div id="overlay-screen">
+        <div class="bg-black border-2 border-cyan-500 p-8 text-center max-w-sm relative shadow-[0_0_50px_rgba(0,242,255,0.2)]">
+            <h1 id="menu-title" class="text-3xl font-bold mb-1">COSMIC ARENA</h1>
+            <p class="text-[10px] text-cyan-400 mb-4 tracking-[0.3em]">DEVELOPED BY REDOM</p>
+            
+            <div id="sigma-quote">"সিগমা রা কখনও হার মানে না, তারা শুধু স্ট্র্যাটেজি চেঞ্জ করে!"</div>
+
+            <div id="control-info" class="text-[10px] mb-6 text-gray-400 space-y-4">
+                <p id="final-score-display" class="hidden text-white text-lg">FINAL INTEL: 0</p>
+                <p>PC: WASD + Mouse | MOBILE: Joysticks</p>
+            </div>
+            <button onclick="initGame()" class="w-full py-3 bg-cyan-500 text-black font-bold hover:bg-white transition-colors mb-2">START MISSION</button>
+            <button onclick="toggleLeaderboard()" class="w-full py-2 bg-gray-800 text-white text-xs border border-gray-600 hover:bg-gray-700 transition-colors">VIEW SCOREBOARD</button>
+        </div>
+    </div>
+
+    <!-- Leaderboard -->
+    <div id="leaderboard" class="leaderboard-panel text-center">
+        <h2 class="text-yellow-500 font-bold mb-4">PREVIOUS SCORES</h2>
+        <div id="score-list" class="text-sm space-y-1 mb-4 max-h-40 overflow-y-auto">
+            <!-- Scores added via JS -->
+        </div>
+        <button onclick="toggleLeaderboard()" class="text-xs text-cyan-400 underline">CLOSE</button>
+    </div>
+
+    <script>
+        // --- SOUND SYSTEM ---
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playSynthSound(freq, type, duration, vol = 0.1) {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e) {}
+        }
+
+        const SIGMA_QUOTES = [
+            "সিগমা রা কখনও হার মানে না, তারা শুধু স্ট্র্যাটেজি চেঞ্জ করে!",
+            "তুমি মরো নাই, তুমি শুধু পরবর্তী মিশনের জন্য রেস্ট নিতেছো।",
+            "এটিটিউড এমন রাখো যাতে এনিমিরাও বলে - ভাই আমার ভুল হয়ে গেছে!",
+            "খেলবে তুমি, হারবে এনিমি - এটাই হলো সিগমা রুল।",
+            "বাপের টাকা না, নিজে করো - সিগমা প্লেয়ার REDOM এর কথা।",
+            "ধন্দা বড় জিনিস ভাই, এনিমি মেরে পয়েন্ট করাও একটা ধন্দা।",
+            "লেজেন্ড রা ফিরে আসে, সিগমা রা কনকোয়ার করে!",
+            "হার মেনে নেওয়া মানেই পরাজয়, আর সিগমা রা কখনও হার মানে না!",
+            "এনিমি যতোই শক্তিশালী হোক, সিগমার কাছে তারা স্রেফ ধুলো।"
+        ];
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let gameActive = false;
+        let score = 0;
+        let stage = 1;
+        let enemiesKilled = 0;
+        let ultCharge = 0;
+        let bossSpawned = false;
+        let stars = [];
+        let player, bullets = [], enemies = [];
+        let keys = {};
+        let mouse = { x: 0, y: 0, down: false };
+
+        const joy = {
+            L: { active: false, x: 0, y: 0, angle: 0, dist: 0 },
+            R: { active: false, x: 0, y: 0, angle: 0, dist: 0 }
+        };
+
+        const STAGE_CONFIG = {
+            1: { name: "DEEP_SPACE", color: "#00ff66", bg: "#020205" },
+            2: { name: "BIO_PLANET", color: "#00ccff", bg: "#050a1a" },
+            3: { name: "LAVA_CORE", color: "#ff4400", bg: "#1a0505" }
+        };
+
+        class Player {
+            constructor() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.hp = 100;
+                this.angle = 0;
+                this.speed = 5;
+            }
+            update() {
+                if (keys['KeyW'] || keys['ArrowUp']) this.y -= this.speed;
+                if (keys['KeyS'] || keys['ArrowDown']) this.y += this.speed;
+                if (keys['KeyA'] || keys['ArrowLeft']) this.x -= this.speed;
+                if (keys['KeyD'] || keys['ArrowRight']) this.x += this.speed;
+
+                if (joy.L.active) {
+                    this.x += Math.cos(joy.L.angle) * this.speed * (joy.L.dist / 50);
+                    this.y += Math.sin(joy.L.angle) * this.speed * (joy.L.dist / 50);
+                }
+
+                if (joy.R.active) {
+                    this.angle = joy.R.angle;
+                } else if (!joy.L.active) {
+                    this.angle = Math.atan2(mouse.y - this.y, mouse.x - this.x);
+                }
+
+                this.x = Math.max(20, Math.min(canvas.width - 20, this.x));
+                this.y = Math.max(20, Math.min(canvas.height - 20, this.y));
+
+                if (ultCharge < 100) ultCharge += 0.2;
+                document.getElementById('ult-status').innerText = ultCharge >= 100 ? "ULT: READY" : `ULT: ${Math.floor(ultCharge)}%`;
+                const uBtn = document.getElementById('ult-btn');
+                if (ultCharge >= 100) uBtn.classList.add('ult-ready');
+                else uBtn.classList.remove('ult-ready');
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.strokeStyle = "#00f2ff";
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.moveTo(18, 0); ctx.lineTo(-12, -12); ctx.lineTo(-6, 0); ctx.lineTo(-12, 12);
+                ctx.closePath(); ctx.stroke();
+                ctx.restore();
+            }
+        }
+
+        class Enemy {
+            constructor(isBoss = false) {
+                this.isBoss = isBoss;
+                this.type = stage;
+                this.radius = isBoss ? 60 : (stage === 1 ? 15 : stage === 2 ? 20 : 12);
+                this.hp = isBoss ? 100 : (stage === 1 ? 2 : stage === 2 ? 4 : 3);
+                this.speed = isBoss ? 0.5 : (stage === 1 ? 1.5 : stage === 2 ? 1.2 : 2.5);
+                this.color = isBoss ? "#ff0000" : STAGE_CONFIG[stage].color;
+                
+                let side = Math.floor(Math.random() * 4);
+                if(side==0){this.x=Math.random()*canvas.width; this.y=-50;}
+                else if(side==1){this.x=canvas.width+50; this.y=Math.random()*canvas.height;}
+                else if(side==2){this.x=Math.random()*canvas.width; this.y=canvas.height+50;}
+                else{this.x=-50; this.y=Math.random()*canvas.height;}
+            }
+            update() {
+                let angle = Math.atan2(player.y - this.y, player.x - this.x);
+                this.x += Math.cos(angle) * this.speed;
+                this.y += Math.sin(angle) * this.speed;
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                if(this.isBoss) {
+                    ctx.rotate(Date.now()/800);
+                    ctx.strokeRect(-this.radius, -this.radius, this.radius*2, this.radius*2);
+                } else {
+                    ctx.beginPath(); ctx.arc(0, 0, this.radius, 0, Math.PI*2); ctx.stroke();
+                }
+                ctx.restore();
+            }
+        }
+
+        class Bullet {
+            constructor(x, y, angle, isUlt = false) {
+                this.x = x; this.y = y; this.angle = angle;
+                this.speed = 12; this.radius = isUlt ? 30 : 4;
+                this.isUlt = isUlt;
+            }
+            update() {
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed;
+            }
+            draw() {
+                ctx.fillStyle = this.isUlt ? "#ff00ea" : "#00f2ff";
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI*2); ctx.fill();
+            }
+        }
+
+        function triggerUlt() {
+            if(ultCharge < 100) return;
+            playSynthSound(100, 'sawtooth', 0.5, 0.2);
+            for(let i=0; i<12; i++) bullets.push(new Bullet(player.x, player.y, (Math.PI*2/12)*i, true));
+            ultCharge = 0;
+        }
+
+        function gameLoop() {
+            if(!gameActive) return;
+            requestAnimationFrame(gameLoop);
+            
+            ctx.fillStyle = STAGE_CONFIG[stage].bg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            player.update();
+            player.draw();
+
+            if(Date.now() % 10 === 0 && (mouse.down || joy.R.active)) {
+                bullets.push(new Bullet(player.x, player.y, player.angle));
+                playSynthSound(440, 'square', 0.05, 0.05);
+            }
+
+            bullets.forEach((b, bi) => {
+                b.update(); b.draw();
+                if(b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) bullets.splice(bi, 1);
+            });
+
+            enemies.forEach((e, ei) => {
+                e.update(); e.draw();
+                if(Math.hypot(e.x - player.x, e.y - player.y) < e.radius + 15) {
+                    player.hp -= 0.5;
+                    document.getElementById('hp-bar').style.width = player.hp + '%';
+                    if(player.hp <= 0) gameOver();
+                }
+                bullets.forEach((b, bi) => {
+                    if(Math.hypot(e.x - b.x, e.y - b.y) < e.radius + b.radius) {
+                        e.hp -= b.isUlt ? 10 : 1;
+                        if(!b.isUlt) bullets.splice(bi, 1);
+                        if(e.hp <= 0) {
+                            playSynthSound(150, 'sine', 0.1, 0.1);
+                            score += e.isBoss ? 1000 : 100;
+                            if(e.isBoss) {
+                                bossSpawned = false; stage = (stage % 3) + 1; enemiesKilled = 0;
+                                document.getElementById('stage-text').innerText = "STAGE: " + STAGE_CONFIG[stage].name;
+                            } else { enemiesKilled++; }
+                            enemies.splice(ei, 1);
+                            document.getElementById('score-text').innerText = "INTEL: " + score;
+                        }
+                    }
+                });
+            });
+        }
+
+        function initGame() {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player = new Player();
+            enemies = []; bullets = []; score = 0; stage = 1; enemiesKilled = 0; bossSpawned = false; gameActive = true;
+            document.getElementById('overlay-screen').style.display = 'none';
+            document.getElementById('hp-bar').style.width = '100%';
+            document.getElementById('final-score-display').classList.add('hidden');
+            spawnManager();
+            gameLoop();
+        }
+
+        function saveScore(s) {
+            let scores = JSON.parse(localStorage.getItem('cosmic_scores') || '[]');
+            scores.push({ score: s, date: new Date().toLocaleDateString() });
+            scores.sort((a,b) => b.score - a.score);
+            localStorage.setItem('cosmic_scores', JSON.stringify(scores.slice(0, 10)));
+        }
+
+        function toggleLeaderboard() {
+            const lb = document.getElementById('leaderboard');
+            if(lb.style.display === 'block') {
+                lb.style.display = 'none';
+            } else {
+                lb.style.display = 'block';
+                const list = document.getElementById('score-list');
+                const scores = JSON.parse(localStorage.getItem('cosmic_scores') || '[]');
+                list.innerHTML = scores.length > 0 ? 
+                    scores.map((s, i) => `<div class="flex justify-between border-b border-gray-800 pb-1"><span>#${i+1}</span><span>${s.score}</span></div>`).join('') :
+                    '<p class="text-gray-500">No records found</p>';
+            }
+        }
+
+        function gameOver() {
+            gameActive = false;
+            playSynthSound(50, 'sawtooth', 0.8, 0.3);
+            saveScore(score);
+            
+            document.getElementById('overlay-screen').style.display = 'flex';
+            document.getElementById('menu-title').innerText = "ধুর মর শালা"; // requested text
+            document.getElementById('menu-title').style.color = "#ff3300";
+            
+            document.getElementById('sigma-quote').innerText = `"${SIGMA_QUOTES[Math.floor(Math.random() * SIGMA_QUOTES.length)]}"`;
+            
+            const fs = document.getElementById('final-score-display');
+            fs.innerText = "FINAL INTEL: " + score;
+            fs.classList.remove('hidden');
+        }
+
+        function spawnManager() {
+            if(!gameActive) return;
+            if(!bossSpawned && enemiesKilled >= 15) {
+                bossSpawned = true;
+                enemies.push(new Enemy(true));
+                document.getElementById('mission-text').innerText = "STATUS: BOSS DETECTED";
+            } else if(!bossSpawned) {
+                enemies.push(new Enemy());
+                document.getElementById('mission-text').innerText = `WAVE: ${enemiesKilled}/15`;
+            }
+            setTimeout(spawnManager, bossSpawned ? 5000 : 1200);
+        }
+
+        window.addEventListener('keydown', e => keys[e.code] = true);
+        window.addEventListener('keyup', e => { 
+            keys[e.code] = false; 
+            if(e.code === 'Space') triggerUlt(); 
+        });
+        window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+        window.addEventListener('mousedown', () => mouse.down = true);
+        window.addEventListener('mouseup', () => mouse.down = false);
+
+        function handleJoy(zoneId, knobId, type) {
+            const zone = document.getElementById(zoneId);
+            const knob = document.getElementById(knobId);
+            
+            zone.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                joy[type].active = true;
+                document.getElementById('ult-btn').style.display = 'flex';
+            });
+
+            zone.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const rect = zone.getBoundingClientRect();
+                const touch = Array.from(e.touches).find(t => 
+                    type === 'L' ? t.clientX < window.innerWidth/2 : t.clientX > window.innerWidth/2
+                );
+                if(!touch) return;
+                const dx = touch.clientX - (rect.left + 70);
+                const dy = touch.clientY - (rect.top + 70);
+                const dist = Math.min(Math.sqrt(dx*dx + dy*dy), 50);
+                const angle = Math.atan2(dy, dx);
+                joy[type].angle = angle;
+                joy[type].dist = dist;
+                knob.style.transform = `translate(calc(-50% + ${Math.cos(angle)*dist}px), calc(-50% + ${Math.sin(angle)*dist}px))`;
+            });
+
+            zone.addEventListener('touchend', () => {
+                joy[type].active = false;
+                knob.style.transform = 'translate(-50%, -50%)';
+            });
+        }
+
+        window.addEventListener('touchstart', () => {
+            document.querySelectorAll('.joystick-zone').forEach(z => z.style.display = 'block');
+        }, { once: true });
+
+        handleJoy('left-zone', 'left-knob', 'L');
+        handleJoy('right-zone', 'right-knob', 'R');
+        window.addEventListener('resize', () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; });
+    </script>
+</body>
+</html>

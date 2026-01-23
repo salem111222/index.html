@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ভাগ পাগলা ভাগ - Weather Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
+        
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #00FF41;
+            font-family: 'Courier Prime', monospace;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            display: block;
+            image-rendering: auto;
+        }
+
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 60px; 
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .matrix-glow {
+            text-shadow: 0 0 10px #00FF41;
+        }
+
+        #menu {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.9);
+            border: 2px solid #00FF41;
+            padding: 2rem;
+            text-align: center;
+            z-index: 30;
+            box-shadow: 0 0 20px #00FF41;
+            max-width: 80%;
+        }
+
+        button {
+            background: #003300;
+            border: 1px solid #00FF41;
+            color: #00FF41;
+            padding: 15px 30px;
+            margin-top: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #00FF41;
+            color: #000;
+        }
+
+        #stage-announcer {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3rem;
+            font-weight: bold;
+            display: none;
+            z-index: 25;
+            text-transform: uppercase;
+        }
+
+        .dev-tag {
+            font-size: 0.75rem;
+            letter-spacing: 2px;
+            margin-bottom: 1rem;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="stage-announcer" class="matrix-glow">INITIALIZING...</div>
+
+        <div id="ui-overlay">
+            <div class="text-2xl matrix-glow">SCORE: <span id="score">0</span></div>
+            <div class="text-xl opacity-80">MAP: <span id="stage-name">Digital Jungle</span></div>
+            <div class="text-sm opacity-60">MAP SHIFT: <span id="next-shift">10</span>s</div>
+            <div id="energy-bar-container" class="w-48 h-4 bg-gray-900 border border-green-500 mt-2">
+                <div id="energy-bar" class="h-full bg-green-500" style="width: 100%"></div>
+            </div>
+            <div class="text-xs opacity-70 mt-1 font-bold">WEATHER: <span id="weather-type">CLEAR</span></div>
+        </div>
+
+        <div id="menu">
+            <span class="dev-tag opacity-60">SYSTEM DESIGNED BY <span class="text-white">REDOM</span></span>
+            <h1 class="text-5xl font-bold mb-4 matrix-glow">ভাগ পাগলা ভাগ</h1>
+            <p id="menu-text">Weather Systems Optimized. Survive the shifts.</p>
+            <button id="startBtn" class="text-xl font-bold">মারা খাওয়ার জন্য Start দে</button>
+            <div class="mt-4 text-xs opacity-70">
+                [SPACE] Jump | [DOWN] Slide | [SHIFT] Bullet Time
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const stageEl = document.getElementById('stage-name');
+        const shiftEl = document.getElementById('next-shift');
+        const weatherEl = document.getElementById('weather-type');
+        const energyBar = document.getElementById('energy-bar');
+        const menu = document.getElementById('menu');
+        const startBtn = document.getElementById('startBtn');
+        const menuText = document.getElementById('menu-text');
+        const announcer = document.getElementById('stage-announcer');
+
+        const customDeathSoundUrl = "https://www.myinstants.com/media/sounds/discord-leave.mp3"; 
+        const deathAudio = new Audio(customDeathSoundUrl);
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        function playSound(freq, type, duration, vol = 0.1) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(freq / 2, audioCtx.currentTime + duration);
+            gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + duration);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        const sfx = {
+            jump: () => playSound(400, 'square', 0.2),
+            slide: () => playSound(150, 'sawtooth', 0.3),
+            shift: () => playSound(800, 'sine', 0.5, 0.2),
+            death: () => {
+                deathAudio.currentTime = 0;
+                deathAudio.play().catch(e => console.log("Audio play failed:", e));
+                playSound(300, 'sawtooth', 0.5);
+                playSound(100, 'square', 0.8);
+            },
+            tick: () => playSound(1000, 'sine', 0.05, 0.05),
+            thunder: () => playSound(60, 'sawtooth', 0.4, 0.1)
+        };
+
+        const DEATH_MESSAGES = [
+            "জীবনেও শেষ করতে পারবি না এই গেম ।",
+            "ধুর মিয়া! স্লাইড করতে পারিস না?",
+            "তোর দ্বারা হবে না, ফোন রেখে পড়তে বোস।",
+            "তোর রিফ্লেক্স তো কচ্ছপের মতো!",
+            "আহারে! মারা খেলি তো শেষ পর্যন্ত।",
+            "এই গেম তোর জন্য না, লুডু খেল গিয়ে!",
+            "বড় বড় কথা, কাজের বেলায় লবডঙ্কা!"
+        ];
+
+        let GAME_SPEED = 4.5; 
+        const GRAVITY = 0.6;
+        const JUMP_FORCE = -12;
+        const BULLET_TIME_FACTOR = 0.35;
+        const STAGE_DURATION = 10;
+        
+        let isRunning = false;
+        let score = 0;
+        let startTime = 0;
+        let obstacles = [];
+        let weatherParticles = [];
+        let energy = 100;
+        let isBulletTime = false;
+        let frameCount = 0;
+        let currentStageIndex = 0;
+        let currentWeather = 'CLEAR'; 
+        let lightningAlpha = 0;
+
+        const STAGES = [
+            { 
+                name: "Digital Jungle", color: "#00FF41", bgColor: "#000800", weather: "RAIN", animals: ['tiger', 'bird'],
+                drawBg: (time) => {
+                    ctx.fillStyle = "#001a00";
+                    for(let i=0; i<5; i++) {
+                        let x = (i * 300 - (time * 50)) % (canvas.width + 300);
+                        ctx.beginPath(); ctx.moveTo(x, canvas.height-50); ctx.lineTo(x+100, canvas.height-250); ctx.lineTo(x+200, canvas.height-50); ctx.fill();
+                    }
+                }
+            },
+            { 
+                name: "Frostbyte Heights", color: "#FFFFFF", bgColor: "#050510", weather: "SNOW", animals: ['tiger', 'bird'],
+                drawBg: (time) => {
+                    ctx.fillStyle = "#1a1a30";
+                    for(let i=0; i<6; i++) {
+                        let x = (i * 400 - (time * 30)) % (canvas.width + 400);
+                        ctx.beginPath(); ctx.moveTo(x, canvas.height-50); ctx.lineTo(x+150, canvas.height-400); ctx.lineTo(x+300, canvas.height-50); ctx.fill();
+                    }
+                }
+            },
+            { 
+                name: "Electric Desert", color: "#FFD700", bgColor: "#0a0a00", weather: "STORM", animals: ['scorpion', 'vulture'],
+                drawBg: (time) => {
+                    ctx.fillStyle = "#221100";
+                    for(let i=0; i<8; i++) {
+                        let x = (i * 250 - (time * 80)) % (canvas.width + 250);
+                        ctx.beginPath(); ctx.arc(x, canvas.height-50, 80, Math.PI, 0); ctx.fill();
+                    }
+                }
+            },
+            { 
+                name: "Neon Ocean", color: "#00FFFF", bgColor: "#00050a", weather: "RAIN", animals: ['shark', 'jellyfish'],
+                drawBg: (time) => {
+                    ctx.strokeStyle = "#004466"; ctx.lineWidth = 2;
+                    for(let i=0; i<3; i++) {
+                        ctx.beginPath();
+                        for(let x=0; x<canvas.width; x+=10) {
+                            let y = canvas.height - 100 + i*20 + Math.sin(x*0.01 + time + i)*15;
+                            ctx.lineTo(x, y);
+                        }
+                        ctx.stroke();
+                    }
+                }
+            }
+        ];
+
+        class WeatherParticle {
+            constructor(type) { this.type = type; this.reset(); }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * -canvas.height;
+                if (this.type === 'RAIN' || this.type === 'STORM') {
+                    this.speed = 15 + Math.random() * 10; this.len = 10 + Math.random() * 20; this.opacity = 0.2 + Math.random() * 0.3;
+                } else if (this.type === 'SNOW') {
+                    this.speed = 2 + Math.random() * 3; this.size = 2 + Math.random() * 4; this.drift = (Math.random() - 0.5) * 2; this.opacity = 0.4 + Math.random() * 0.4;
+                }
+            }
+            update() {
+                const bt = isBulletTime ? BULLET_TIME_FACTOR : 1;
+                this.y += this.speed * bt;
+                if (this.type === 'SNOW') this.x += this.drift * bt;
+                if (this.y > canvas.height) this.reset();
+            }
+            draw() {
+                ctx.save(); ctx.globalAlpha = this.opacity;
+                if (this.type === 'RAIN' || this.type === 'STORM') {
+                    ctx.strokeStyle = this.type === 'STORM' ? '#88AAFF' : '#00FFFF'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(this.x, this.y); ctx.lineTo(this.x, this.y + this.len); ctx.stroke();
+                } else if (this.type === 'SNOW') {
+                    ctx.fillStyle = '#FFFFFF'; ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+                }
+                ctx.restore();
+            }
+        }
+
+        const player = {
+            x: 100, y: 0, width: 30, height: 60, dy: 0, isJumping: false, isSliding: false,
+            update() {
+                this.height = this.isSliding ? 30 : 60;
+                this.y += this.dy;
+                if (this.y + this.height < canvas.height - 50) {
+                    this.dy += GRAVITY * (isBulletTime ? BULLET_TIME_FACTOR : 1);
+                } else {
+                    this.y = canvas.height - 50 - this.height; this.dy = 0; this.isJumping = false;
+                }
+            },
+            draw() {
+                const stage = STAGES[currentStageIndex];
+                ctx.strokeStyle = stage.color; ctx.lineWidth = 3; ctx.shadowBlur = 10; ctx.shadowColor = stage.color;
+                const px = this.x + 15, py = this.y;
+                if (this.isSliding) {
+                    ctx.beginPath(); ctx.arc(px + 15, py + 10, 6, 0, Math.PI * 2); ctx.moveTo(px + 10, py + 15); ctx.lineTo(px - 10, py + 28); ctx.stroke();
+                } else {
+                    const legS = Math.sin(frameCount * 0.15) * 12;
+                    ctx.beginPath(); ctx.arc(px, py + 10, 7, 0, Math.PI * 2); ctx.moveTo(px, py + 17); ctx.lineTo(px, py + 38); ctx.moveTo(px, py + 25); ctx.lineTo(px + legS, py + 35); ctx.moveTo(px, py + 25); ctx.lineTo(px - legS, py + 35); ctx.moveTo(px, py + 38); ctx.lineTo(px + legS, py + 55); ctx.moveTo(px, py + 38); ctx.lineTo(px - legS, py + 55); ctx.stroke();
+                }
+                ctx.shadowBlur = 0;
+            },
+            jump() { if (!this.isJumping) { this.dy = JUMP_FORCE; this.isJumping = true; sfx.jump(); } },
+            slide(state) { if (state && !this.isSliding) sfx.slide(); this.isSliding = state; }
+        };
+
+        class Obstacle {
+            constructor(type) {
+                this.type = type; this.width = 80; this.height = 50; this.x = canvas.width; this.frame = 0;
+                this.color = STAGES[currentStageIndex].color;
+                const isGround = ['tiger', 'scorpion', 'shark'].includes(type);
+                // Adjusted y for flying entities (bird, vulture, jellyfish) to be lower
+                this.y = isGround ? canvas.height - 50 - this.height : canvas.height - 135;
+            }
+            update() { this.x -= GAME_SPEED * (isBulletTime ? BULLET_TIME_FACTOR : 1); this.frame += 0.15; }
+            draw() {
+                ctx.save(); ctx.translate(this.x, this.y); ctx.shadowBlur = 15; ctx.shadowColor = this.color;
+                ctx.fillStyle = this.color; ctx.strokeStyle = this.color; ctx.lineWidth = 2;
+                if (this.type === 'tiger') {
+                    ctx.beginPath(); ctx.ellipse(40, 30, 30, 15, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(65, 20, 10, 0, Math.PI * 2); ctx.fill();
+                    const legS = Math.sin(this.frame * 2) * 10; ctx.fillRect(20, 40, 5, 10 + legS); ctx.fillRect(50, 40, 5, 10 - legS);
+                } else if (this.type === 'bird' || this.type === 'vulture') {
+                    const wingS = Math.sin(this.frame * 5) * 20; ctx.beginPath(); ctx.moveTo(40, 25); ctx.quadraticCurveTo(20, 25 - wingS, 0, 10); ctx.moveTo(40, 25); ctx.quadraticCurveTo(60, 25 - wingS, 80, 10); ctx.stroke(); ctx.beginPath(); ctx.ellipse(40, 25, 15, 8, 0, 0, Math.PI * 2); ctx.fill();
+                } else if (this.type === 'scorpion') {
+                    ctx.beginPath(); ctx.ellipse(30, 35, 20, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(10, 35); ctx.bezierCurveTo(-10, 20, 10, 0, 30, 5); ctx.stroke();
+                } else if (this.type === 'shark') {
+                    ctx.beginPath(); ctx.ellipse(40, 25, 35, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.moveTo(40, 15); ctx.lineTo(30, -5); ctx.lineTo(20, 15); ctx.fill();
+                } else if (this.type === 'jellyfish') {
+                    ctx.beginPath(); ctx.arc(40, 20, 18, Math.PI, 0); ctx.fill();
+                    for(let i=0; i<3; i++) {
+                        ctx.beginPath(); ctx.moveTo(25+i*10, 20); ctx.quadraticCurveTo(25+i*10+Math.sin(this.frame*2)*5, 35, 25+i*10, 50); ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+        }
+
+        function init() {
+            resize();
+            window.addEventListener('resize', resize);
+            window.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' || e.code === 'ArrowUp') player.jump();
+                if (e.code === 'ArrowDown') player.slide(true);
+                if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') isBulletTime = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                if (e.code === 'ArrowDown') player.slide(false);
+                if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') isBulletTime = false;
+            });
+
+            startBtn.addEventListener('click', () => {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                isRunning = true; score = 0; energy = 100; obstacles = []; GAME_SPEED = 5;
+                currentStageIndex = 0; startTime = Date.now(); 
+                updateWeather();
+                menu.classList.add('hidden');
+                requestAnimationFrame(gameLoop);
+            });
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            player.y = canvas.height - 50 - player.height;
+        }
+
+        function updateWeather() {
+            currentWeather = STAGES[currentStageIndex].weather;
+            weatherEl.innerText = currentWeather;
+            weatherParticles = [];
+            const count = currentWeather === 'SNOW' ? 120 : 180;
+            for(let i=0; i<count; i++) weatherParticles.push(new WeatherParticle(currentWeather));
+        }
+
+        let lastObs = 0;
+        let lastStageShift = 0;
+        let lastShiftSec = 0;
+
+        function gameLoop() {
+            if (!isRunning) return;
+            frameCount++;
+            const currentTime = Date.now();
+            const elapsed = (currentTime - startTime) / 1000;
+            const stage = STAGES[currentStageIndex];
+
+            const timeInStage = Math.floor(elapsed % STAGE_DURATION);
+            const displayTime = STAGE_DURATION - timeInStage;
+            shiftEl.innerText = displayTime;
+            
+            if (displayTime <= 3 && displayTime !== lastShiftSec) {
+                sfx.tick();
+                lastShiftSec = displayTime;
+            }
+
+            if (elapsed > lastStageShift + STAGE_DURATION) {
+                lastStageShift += STAGE_DURATION;
+                currentStageIndex = (currentStageIndex + 1) % STAGES.length;
+                updateWeather(); 
+                sfx.shift();
+                announcer.innerText = `SHIFTING TO ${STAGES[currentStageIndex].name}...`;
+                announcer.style.color = STAGES[currentStageIndex].color;
+                announcer.style.display = 'block';
+                setTimeout(() => announcer.style.display = 'none', 1500);
+                stageEl.innerText = STAGES[currentStageIndex].name;
+                GAME_SPEED += 0.3;
+            }
+
+            ctx.fillStyle = stage.bgColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            stage.drawBg(elapsed);
+
+            weatherParticles.forEach(p => { p.update(); p.draw(); });
+            
+            if (currentWeather === 'STORM' && Math.random() < 0.005) {
+                lightningAlpha = 0.6; sfx.thunder();
+            }
+            if (lightningAlpha > 0) {
+                ctx.fillStyle = `rgba(255, 255, 255, ${lightningAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                lightningAlpha -= 0.05;
+            }
+
+            ctx.strokeStyle = stage.color; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(0, canvas.height-50); ctx.lineTo(canvas.width, canvas.height-50); ctx.stroke();
+
+            if (isBulletTime && energy > 0) energy -= 0.8;
+            else { isBulletTime = false; if (energy < 100) energy += 0.2; }
+            energyBar.style.width = `${energy}%`;
+            energyBar.style.backgroundColor = stage.color;
+
+            player.update();
+            player.draw();
+
+            if (currentTime - lastObs > 1500 && Math.random() < 0.04) {
+                const type = stage.animals[Math.floor(Math.random() * stage.animals.length)];
+                obstacles.push(new Obstacle(type));
+                lastObs = currentTime;
+            }
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const o = obstacles[i];
+                o.update();
+                o.draw();
+                if (player.x < o.x + o.width - 25 && player.x + player.width > o.x + 25 &&
+                    player.y < o.y + o.height - 10 && player.y + player.height > o.y + 10) {
+                    isRunning = false;
+                    sfx.death();
+                    const randomMsg = DEATH_MESSAGES[Math.floor(Math.random() * DEATH_MESSAGES.length)];
+                    menu.classList.remove('hidden');
+                    menuText.innerHTML = `
+                        <span class="text-red-500 font-bold text-xl">${randomMsg}</span><br>
+                        Score: ${Math.floor(score)}
+                    `;
+                    return;
+                }
+                if (o.x + o.width < -100) obstacles.splice(i, 1);
+            }
+
+            score += 0.1;
+            scoreEl.innerText = Math.floor(score);
+            requestAnimationFrame(gameLoop);
+        }
+
+        init();
+    </script>
+</body>
+</html>

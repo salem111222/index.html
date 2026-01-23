@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REDOM | Advanced Systems</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Rajdhani:wght@300;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #00f2ff;
+            --secondary: #bc13fe;
+            --bg-dark: #050505;
+        }
+
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: var(--bg-dark);
+            color: white;
+            overflow-x: hidden;
+        }
+
+        .font-orbitron { font-family: 'Orbitron', sans-serif; }
+
+        .neon-logo {
+            background: linear-gradient(90deg, #00f2ff, #7cffcb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: glow-pulse 3s infinite alternate;
+            filter: drop-shadow(0 0 5px rgba(0, 242, 255, 0.5));
+        }
+
+        @keyframes glow-pulse {
+            from { filter: drop-shadow(0 0 2px rgba(0, 242, 255, 0.4)); }
+            to { filter: drop-shadow(0 0 10px rgba(124, 255, 203, 0.8)); }
+        }
+
+        canvas#bgCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: -1;
+            background: radial-gradient(circle at top, #0f2027, #000000);
+        }
+
+        .cyber-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 242, 255, 0.3);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+        }
+
+        .cyber-card::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(120deg, transparent, rgba(0, 242, 255, 0.4), transparent);
+            transition: 0.5s;
+            z-index: 1;
+        }
+
+        .cyber-card:hover::before {
+            left: 100%;
+            transition: 0.7s;
+        }
+
+        .cyber-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            border-color: var(--primary);
+            box-shadow: 0 0 20px rgba(0, 242, 255, 0.2);
+        }
+
+        .social-btn {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,0.1);
+            background: rgba(255,255,255,0.05);
+            transition: 0.3s;
+            color: #aaa;
+        }
+        .social-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+            transform: translateY(-3px);
+            box-shadow: 0 0 15px rgba(0, 242, 255, 0.4);
+        }
+
+        .glass-header {
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .terminal-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .terminal-modal.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .terminal-window {
+            width: 90%;
+            max-width: 700px;
+            background: #0a0a0f;
+            border: 1px solid #00f2ff;
+            border-radius: 8px;
+            box-shadow: 0 0 30px rgba(0, 242, 255, 0.15);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+        .terminal-modal.active .terminal-window {
+            transform: scale(1);
+        }
+        .terminal-header {
+            background: rgba(0, 242, 255, 0.1);
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #00f2ff;
+        }
+        .terminal-body {
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            color: #00f2ff;
+            font-size: 14px;
+        }
+        .terminal-input-area {
+            padding: 15px;
+            border-top: 1px solid #00f2ff;
+            background: #050508;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .terminal-input {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: white;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            outline: none;
+        }
+        
+        .terminal-msg { margin-bottom: 12px; }
+        .terminal-msg.user { color: #fff; }
+        .terminal-msg.ai { color: #00f2ff; text-shadow: 0 0 2px #00f2ff; }
+
+        .mic-active {
+            animation: pulse-red 1s infinite;
+            color: #ff0055 !important;
+        }
+        @keyframes pulse-red {
+            0% { text-shadow: 0 0 0 rgba(255, 0, 85, 0.4); }
+            70% { text-shadow: 0 0 10px rgba(255, 0, 85, 1); }
+            100% { text-shadow: 0 0 0 rgba(255, 0, 85, 0.4); }
+        }
+
+        .listening-indicator {
+            font-size: 10px;
+            color: #ff0055;
+            display: none;
+            margin-left: 10px;
+        }
+        .listening-indicator.active { display: inline; }
+
+        footer {
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(0, 242, 255, 0.1);
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <canvas id="bgCanvas"></canvas>
+
+    <header class="glass-header fixed top-0 w-full z-50 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="relative">
+                <i data-lucide="aperture" class="text-cyan-400 w-8 h-8 animate-spin-slow"></i>
+                <div class="absolute inset-0 bg-cyan-400 blur-lg opacity-30"></div>
+            </div>
+            <h1 class="font-orbitron text-3xl font-bold tracking-[0.2em] neon-logo select-none">REDOM</h1>
+        </div>
+        <div class="cursor-pointer group" onclick="toggleMenu()">
+            <div class="space-y-1.5 p-2">
+                <span class="block w-8 h-0.5 bg-cyan-400 transition-all group-hover:w-6 ml-auto shadow-[0_0_5px_cyan]"></span>
+                <span class="block w-6 h-0.5 bg-cyan-400 transition-all group-hover:w-8 ml-auto shadow-[0_0_5px_cyan]"></span>
+                <span class="block w-8 h-0.5 bg-cyan-400 transition-all group-hover:w-4 ml-auto shadow-[0_0_5px_cyan]"></span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Side Menu -->
+    <div id="sideMenu" class="fixed inset-y-0 right-0 w-80 bg-black/95 backdrop-blur-xl border-l border-cyan-500/30 transform translate-x-full transition-transform duration-500 z-[60] p-8 shadow-2xl flex flex-col">
+        <button onclick="toggleMenu()" class="absolute top-6 right-6 text-gray-400 hover:text-white">
+            <i data-lucide="x" class="w-8 h-8"></i>
+        </button>
+        <div class="mt-12 mb-8 border-b border-white/10 pb-4">
+            <h2 class="font-orbitron text-xl text-cyan-400">SYSTEM_NAV</h2>
+        </div>
+        <nav class="flex flex-col gap-6">
+            <a href="#" class="group flex items-center gap-4 text-gray-400 hover:text-white text-xl">
+                <i data-lucide="cpu" class="group-hover:text-cyan-400"></i> Profile
+            </a>
+            <a href="#" class="group flex items-center gap-4 text-gray-400 hover:text-white text-xl">
+                <i data-lucide="settings" class="group-hover:text-purple-400"></i> Settings
+            </a>
+        </nav>
+    </div>
+
+    <main class="flex-grow pt-32 pb-20 px-4 flex flex-col items-center relative z-10">
+        <div class="text-center mb-16 max-w-4xl mx-auto">
+            <h2 class="font-orbitron text-4xl md:text-6xl font-bold mb-6 text-white uppercase">
+                Neural <span class="text-cyan-400">Interface</span>
+            </h2>
+            <p class="text-gray-400 text-lg md:text-xl font-light tracking-wide max-w-2xl mx-auto">
+                System active. Say "Hey" to activate the Neural Assistant.
+            </p>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full max-w-7xl">
+
+<div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="window.location.href='Dashboard.html'">
+                <i data-lucide="layout-grid" class="w-10 h-10 text-cyan-500"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">DASHBOARD</h3>
+            </div>
+  <div class="cyber-card p-8 flex flex-col items-center gap-4 group"  onclick="window.location.href='REDOM AI.html'">
+                <i data-lucide="globe-2" class="w-10 h-10 text-blue-500"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">REDOM Ai</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group border-purple-500/30" onclick="openTerminal('AI_CORE')">
+                <i data-lucide="brain-circuit" class="w-10 h-10 text-purple-500 group-hover:animate-pulse"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">AI CORE</h3>
+            </div>
+
+               <div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="window.location.href='Games.html'">
+                <i data-lucide="life-buoy" class="w-10 h-10 text-rose-400"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">Games</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group border-pink-500/30" onclick="openTerminal('ANALYTICS')">
+                <i data-lucide="bar-chart-big" class="w-10 h-10 text-pink-500"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">ANALYTICS</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="triggerToast('Cloud')">
+                <i data-lucide="cloud-lightning" class="w-10 h-10 text-cyan-300"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">CLOUD</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="triggerToast('Firewall')">
+                <i data-lucide="lock" class="w-10 h-10 text-emerald-400"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">FIREWALL</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="triggerToast('Help')">
+                <i data-lucide="message-square-dashed" class="w-10 h-10 text-yellow-400"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">Help</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="triggerToast('Projects')">
+                <i data-lucide="folder-kanban" class="w-10 h-10 text-orange-400"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">PROJECTS</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="triggerToast('Squad')">
+                <i data-lucide="users" class="w-10 h-10 text-indigo-400"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">SQUAD</h3>
+            </div>
+
+
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group" onclick="triggerToast('Market')">
+                <i data-lucide="shopping-bag" class="w-10 h-10 text-amber-300"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">MARKET</h3>
+            </div>
+
+            <div class="cyber-card p-8 flex flex-col items-center gap-4 group border-red-500/30" onclick="triggerToast('Logout')">
+                <i data-lucide="power" class="w-10 h-10 text-red-500"></i>
+                <h3 class="font-orbitron text-lg tracking-wider text-gray-200">ABORT</h3>
+            </div>
+        </div>
+    </main>
+
+    <!-- Social Media Footer -->
+    <footer class="mt-auto py-10 px-6 z-10">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="flex flex-col items-center md:items-start">
+                <span class="font-orbitron text-cyan-400 tracking-[0.3em] text-sm mb-2">CONNECT_NEURAL_LINKS</span>
+                <div class="flex gap-4">
+                    <a href="https://facebook.com" target="_blank" class="social-btn" title="Facebook">
+                        <i data-lucide="facebook" class="w-5 h-5"></i>
+                    </a>
+                    <a href="https://instagram.com" target="_blank" class="social-btn" title="Instagram">
+                        <i data-lucide="instagram" class="w-5 h-5"></i>
+                    </a>
+                    <a href="https://linkedin.com" target="_blank" class="social-btn" title="LinkedIn">
+                        <i data-lucide="linkedin" class="w-5 h-5"></i>
+                    </a>
+                    <a href="https://youtube.com" target="_blank" class="social-btn" title="YouTube">
+                        <i data-lucide="youtube" class="w-5 h-5"></i>
+                    </a>
+                    <a href="https://github.com" target="_blank" class="social-btn" title="GitHub">
+                        <i data-lucide="github" class="w-5 h-5"></i>
+                    </a>
+                    <a href="https://discord.com" target="_blank" class="social-btn" title="Discord">
+                        <i data-lucide="message-circle" class="w-5 h-5"></i>
+                    </a>
+                </div>
+            </div>
+            <div class="text-center md:text-right">
+                <p class="text-gray-500 text-sm font-mono">&copy; 2026 REDOM SYSTEMS. ALL RIGHTS RESERVED.</p>
+                <p class="text-cyan-900 text-xs font-mono uppercase mt-1">Status: Operational // Latency: 12ms</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-900 border border-cyan-500/50 text-cyan-50 px-6 py-4 rounded-lg translate-y-24 opacity-0 transition-all z-50">
+        <span id="toastText">Accessing Protocol...</span>
+    </div>
+
+    <!-- Terminal Modal -->
+    <div id="terminalModal" class="terminal-modal">
+        <div class="terminal-window">
+            <div class="terminal-header">
+                <div class="flex items-center gap-3">
+                    <span class="font-orbitron text-sm tracking-widest text-cyan-400">NEURAL_LINK // V.2.1</span>
+                    <button id="langToggle" onclick="toggleLanguage()" class="text-xs font-mono text-cyan-400 border border-cyan-400/50 px-2 py-0.5 rounded hover:bg-cyan-400/20">VOICE: EN</button>
+                    <span id="listeningIndicator" class="listening-indicator font-mono">● LISTENING</span>
+                </div>
+                <button onclick="closeTerminal()" class="text-gray-500 hover:text-white">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div id="terminalBody" class="terminal-body">
+                <div class="terminal-msg ai">SYSTEM READY. SAY 'HEY' TO BEGIN.</div>
+            </div>
+            <div class="terminal-input-area" id="inputArea">
+                <span class="text-green-500 font-bold">root@redom:~$</span>
+                <input type="text" id="terminalInput" class="terminal-input" placeholder="Enter command..." autocomplete="off">
+                <button id="micBtn" onclick="toggleManualMic()" class="text-cyan-400 p-2 rounded-full hover:bg-cyan-400/10">
+                    <i data-lucide="mic" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        function toggleMenu() {
+            document.getElementById('sideMenu').classList.toggle('translate-x-full');
+        }
+
+        function triggerToast(name) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastText').innerText = `Initializing ${name} Protocol...`;
+            toast.classList.remove('translate-y-24', 'opacity-0');
+            setTimeout(() => toast.classList.add('translate-y-24', 'opacity-0'), 2000);
+        }
+
+        // --- BG ANIMATION ---
+        const canvas = document.getElementById('bgCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height, particles = [];
+        function resize() {
+            width = window.innerWidth; height = window.innerHeight;
+            canvas.width = width; canvas.height = height;
+        }
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width; this.y = Math.random() * height;
+                this.vx = (Math.random() - 0.5) * 0.4; this.vy = (Math.random() - 0.5) * 0.4;
+            }
+            update() {
+                this.x += this.vx; this.y += this.vy;
+                if (this.x < 0 || this.x > width) this.vx *= -1;
+                if (this.y < 0 || this.y > height) this.vy *= -1;
+            }
+            draw() {
+                ctx.fillStyle = 'rgba(0, 242, 255, 0.4)'; ctx.beginPath();
+                ctx.arc(this.x, this.y, 1, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+        function animate() {
+            ctx.clearRect(0, 0, width, height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+        for(let i=0; i<100; i++) particles.push(new Particle());
+        animate();
+
+        // --- VOICE & AI ---
+        const apiKey = "AIzaSyAUY1aq-3oEpFSYbD6xuZI24uFIAkOoqFQ";
+        let currentLang = 'en-US';
+        let isActive = false;
+        let recognition = null;
+        const terminalModal = document.getElementById('terminalModal');
+        const terminalBody = document.getElementById('terminalBody');
+        const terminalInput = document.getElementById('terminalInput');
+        const indicator = document.getElementById('listeningIndicator');
+        const micBtn = document.getElementById('micBtn');
+
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => indicator.classList.add('active');
+            
+            recognition.onresult = (event) => {
+                const result = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+                console.log("Input:", result);
+
+                if (!isActive && (result.includes("hey") || result.includes("hay") || result.includes("ai"))) {
+                    isActive = true;
+                    micBtn.classList.add('mic-active');
+                    const msg = currentLang === 'en-US' ? "How can I help you?" : "Ami kivabe sahayyo korte pari?";
+                    printLine(msg, 'ai');
+                    speakText(msg);
+                } else if (isActive) {
+                    terminalInput.value = result;
+                    handleInput();
+                }
+            };
+
+            recognition.onend = () => {
+                indicator.classList.remove('active');
+                try { recognition.start(); } catch(e) {}
+            };
+
+            recognition.start();
+        }
+
+        function toggleManualMic() {
+            isActive = !isActive;
+            if(isActive) micBtn.classList.add('mic-active');
+            else micBtn.classList.remove('mic-active');
+        }
+
+        function toggleLanguage() {
+            currentLang = (currentLang === 'en-US') ? 'bn-BD' : 'en-US';
+            document.getElementById('langToggle').textContent = `VOICE: ${currentLang === 'en-US' ? 'EN' : 'BN'}`;
+            if(recognition) recognition.lang = currentLang;
+        }
+
+        async function handleInput() {
+            const text = terminalInput.value;
+            if(!text) return;
+            printLine(text, 'user');
+            terminalInput.value = '';
+            isActive = false; 
+            micBtn.classList.remove('mic-active');
+
+            const systemPrompt = "You are REDOM AI. Respond in the same language as the user. If they use Bangla, respond in Bangla. Be robotic but helpful.";
+            const response = await callGemini(text, systemPrompt);
+            printLine(response, 'ai');
+            speakText(response);
+        }
+
+        async function callGemini(prompt, system) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        contents: [{parts: [{text: prompt}]}],
+                        systemInstruction: {parts: [{text: system}]}
+                    })
+                });
+                const data = await res.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch(e) { return "ERROR CONNECTING TO NEURAL CORE."; }
+        }
+
+        function speakText(text) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            const isBangla = /[\u0980-\u09FF]/.test(text);
+            
+            const findVoice = () => {
+                const voices = window.speechSynthesis.getVoices();
+                let voice = voices.find(v => v.lang.startsWith(isBangla ? 'bn' : 'en'));
+                if(voice) utterance.voice = voice;
+                window.speechSynthesis.speak(utterance);
+            };
+
+            if (window.speechSynthesis.getVoices().length === 0) {
+                window.speechSynthesis.onvoiceschanged = findVoice;
+            } else {
+                findVoice();
+            }
+        }
+
+        function printLine(text, type) {
+            const div = document.createElement('div');
+            div.className = `terminal-msg ${type}`;
+            div.innerText = `> ${text}`;
+            terminalBody.appendChild(div);
+            terminalBody.scrollTop = terminalBody.scrollHeight;
+        }
+
+        function openTerminal(mode) {
+            terminalModal.classList.add('active');
+            if(mode === 'ANALYTICS') runAnalytics();
+        }
+
+        function closeTerminal() {
+            terminalModal.classList.remove('active');
+            window.speechSynthesis.cancel();
+        }
+
+        async function runAnalytics() {
+            printLine("FETCHING REAL-TIME METRICS...", "ai");
+            const report = await callGemini("Generate a 3-line tech status report.", "Robotic observer.");
+            printLine(report, "ai");
+            speakText(report);
+        }
+
+        terminalInput.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') handleInput();
+        });
+    </script>
+</body>
+</html>
