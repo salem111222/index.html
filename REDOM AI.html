@@ -104,6 +104,9 @@
             pointer-events: auto;
             transform: scale(1);
         }
+        
+        .state-thinking { animation: pulse-fast 0.5s infinite alternate; }
+        @keyframes pulse-fast { from { opacity: 0.5; } to { opacity: 1; } }
     </style>
 </head>
 <body class="h-screen w-screen flex flex-col items-center justify-between p-4 md:p-6 relative mood-savage">
@@ -161,7 +164,7 @@
             </div>
             
             <button id="settingsBtn" class="bg-white/5 border border-white/10 w-12 h-12 rounded-xl flex items-center justify-center text-gray-400">
-                <i class="ph ph-ghost text-xl"></i>
+                <i class="ph ph-gear text-xl"></i>
             </button>
         </div>
     </div>
@@ -179,23 +182,32 @@
         </div>
     </div>
 
-    <!-- Identity Modal -->
+    <!-- Settings Modal -->
     <div id="settingsModal" class="hidden fixed inset-0 bg-black/98 z-50 flex items-center justify-center backdrop-blur-2xl p-6">
         <div class="glass-panel p-8 w-full max-w-md border-secondary/50">
-            <h2 class="text-2xl font-[Orbitron] mb-8 text-secondary text-center tracking-[0.2em]">OPERATOR IDENTITY</h2>
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-[Orbitron] text-secondary tracking-[0.2em]">CORE SETTINGS</h2>
+                <button id="closeSettingsX" class="text-gray-500 hover:text-white"><i class="ph ph-x text-xl"></i></button>
+            </div>
+            
             <div class="space-y-6">
                 <div>
-                    <label class="block text-[10px] text-gray-500 uppercase mb-3 ml-1 tracking-widest">Identify Yourself</label>
-                    <input id="userNameInput" type="text" class="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-secondary outline-none">
+                    <label class="block text-[10px] text-gray-500 uppercase mb-3 ml-1 tracking-widest">Operator Name</label>
+                    <input id="userNameInput" type="text" placeholder="Your Name" class="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-secondary outline-none">
                 </div>
-                <button id="closeSettings" class="w-full py-4 bg-secondary text-white font-bold rounded-xl tracking-[0.2em] uppercase hover:opacity-90 transition-all">Update Link</button>
+                
+                <div>
+                    <label class="block text-[10px] text-gray-500 uppercase mb-3 ml-1 tracking-widest">Gemini API Key</label>
+                    <input id="apiKeyInput" type="password" placeholder="Enter your API Key here..." class="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:border-secondary outline-none font-mono text-sm">
+                    <p class="text-[9px] text-gray-600 mt-2 px-1">Your key is stored locally in your browser.</p>
+                </div>
+
+                <button id="saveSettings" class="w-full py-4 bg-secondary text-white font-bold rounded-xl tracking-[0.2em] uppercase hover:opacity-90 transition-all">Save & Update Link</button>
             </div>
         </div>
     </div>
 
     <script type="module">
-        const apiKey = "AIzaSyDH2EgXbFepumkl48w20k99Vgc_72nyC7g"; 
-
         const moods = [
             { id: 'savage', label: 'EXTREME', color: '#ff0011', icon: 'ph-skull', desc: 'Aggressive Roast', prompt: 'Your mood is EXTREME SAVAGE/SIGMA. You are extremely blunt, rude, and aggressive. If the user insults you or uses bad words, you MUST roast them back using even harsher slang, insults, or Roasts. Do not hold back. You are a Sigma who hates wasting time on idiots. Use colloquial Banglish and aggressive street slang.', status: 'Personality: Extreme Sigma' },
             { id: 'friendly', label: 'FRIENDLY', color: '#00d4ff', icon: 'ph-handshake', desc: 'Best Friend', prompt: 'Very friendly, polite, like a best friend, helpful, kind, colloquial Banglish.', status: 'Personality: Bestie' },
@@ -208,6 +220,7 @@
         const config = {
             name: "REDOM",
             user: localStorage.getItem('redom_user') || "User",
+            apiKey: localStorage.getItem('redom_api_key') || "AIzaSyCwAQRITmkJk6do59zZDm_zASfdEKHvjIg", 
             isMuted: localStorage.getItem('redom_muted') === 'true'
         };
 
@@ -229,7 +242,10 @@
             closeMoodBtn: document.getElementById('closeMoodBtn'),
             settingsBtn: document.getElementById('settingsBtn'),
             settingsModal: document.getElementById('settingsModal'),
-            userNameInput: document.getElementById('userNameInput')
+            userNameInput: document.getElementById('userNameInput'),
+            apiKeyInput: document.getElementById('apiKeyInput'),
+            saveSettings: document.getElementById('saveSettings'),
+            closeSettingsX: document.getElementById('closeSettingsX')
         };
 
         function setMood(moodId) {
@@ -257,6 +273,8 @@
             speak(messages[mood.id]);
         }
 
+        window.setMood = setMood;
+
         function initMoodGrid() {
             ui.moodGrid.innerHTML = moods.map(mood => `
                 <div class="mood-item p-4 rounded-2xl flex flex-col items-center gap-2" 
@@ -268,8 +286,6 @@
                 </div>
             `).join('');
         }
-
-        window.setMood = setMood;
 
         function speak(text) {
             if (config.isMuted) return;
@@ -293,11 +309,18 @@
 
         async function processInput(text) {
             if (!text.trim()) return;
+            
+            if (!config.apiKey) {
+                addMessage("user", text);
+                respond("Dost, age settings theke tomar Gemini API Key ta boshao, nahole kotha bolte parbo na!");
+                return;
+            }
+
             addMessage("user", text);
             ui.soul.classList.add('state-thinking');
 
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${config.apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -314,10 +337,16 @@
                         }]
                     })
                 });
+                
+                if (!response.ok) throw new Error("API_ERROR");
+
                 const data = await response.json();
                 const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text || "Mather opor diye gelo re dost.";
                 respond(aiText);
-            } catch (e) { respond("Network e jhamela dost!"); }
+            } catch (e) { 
+                console.error(e);
+                respond("API Key invalid ba Network e jhamela dost!"); 
+            }
         }
 
         function respond(text) {
@@ -358,22 +387,37 @@
         };
 
         ui.input.onkeypress = (e) => { if(e.key === 'Enter') { processInput(ui.input.value); ui.input.value = ''; } };
+        
+        // Settings Handlers
         ui.settingsBtn.onclick = () => ui.settingsModal.classList.remove('hidden');
-        document.getElementById('closeSettings').onclick = () => {
+        ui.closeSettingsX.onclick = () => ui.settingsModal.classList.add('hidden');
+        
+        ui.saveSettings.onclick = () => {
             config.user = ui.userNameInput.value || "User";
+            config.apiKey = ui.apiKeyInput.value.trim();
+            
             localStorage.setItem('redom_user', config.user);
+            localStorage.setItem('redom_api_key', config.apiKey);
+            
             ui.settingsModal.classList.add('hidden');
+            
+            if (config.apiKey) {
+                respond(`Link updated, ${config.user}! Ekhon kotha bolte pari.`);
+            } else {
+                respond("API Key chara ami kotha bolte parbo na kintu!");
+            }
         };
 
         window.onload = () => {
             initMoodGrid();
             window.speechSynthesis.getVoices();
             ui.userNameInput.value = config.user;
+            ui.apiKeyInput.value = config.apiKey;
             if (config.isMuted) ui.muteIcon.className = 'ph ph-speaker-slash text-xl';
-            addMessage("ai", "REDOM Extreme mode online. Beshi chalaki korbi na!");
+            
+            const welcomeMsg = config.apiKey ? "REDOM Extreme mode online. Beshi chalaki korbi na!" : "Hellow! Settings theke age tomar Gemini API key ta boshao.";
+            addMessage("ai", welcomeMsg);
         };
     </script>
 </body>
-
 </html>
-
