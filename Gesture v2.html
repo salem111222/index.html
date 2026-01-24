@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>High Fidelity AR Particle System</title>
+    
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    
+    <!-- MediaPipe Hands -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+
+        #input_video {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+            z-index: 0;
+            display: block;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        #skeleton-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 2;
+            pointer-events: none;
+            transform: scaleX(-1);
+        }
+
+        /* UI Styling */
+        #ui-layer {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            color: white;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 18px 20px;
+            border-radius: 20px;
+            backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            pointer-events: auto;
+            width: 90%;
+            max-width: 350px;
+            box-sizing: border-box;
+            transition: transform 0.4s ease, opacity 0.3s;
+        }
+
+        #ui-layer.hidden {
+            transform: translate(-50%, 150%);
+            opacity: 0;
+        }
+
+        #close-ui {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: #ff00ff;
+            font-size: 1.2rem;
+            cursor: pointer;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #open-ui {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 11;
+            background: rgba(0, 255, 255, 0.3);
+            border: 1px solid #00ffff;
+            color: #00ffff;
+            padding: 8px 15px;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            display: none;
+        }
+
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 1rem;
+            background: linear-gradient(90deg, #00ffff, #ff00ff, #ffff00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-align: center;
+            font-weight: 900;
+        }
+
+        .instruction {
+            font-size: 0.7rem;
+            margin: 5px 0;
+            color: #ddd;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 15px;
+        }
+
+        .btn-toggle {
+            flex: 1;
+            padding: 8px 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            color: white;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .btn-toggle.active-mode {
+            background: #00ffff;
+            color: #000;
+            border: none;
+        }
+
+        #status {
+            margin-top: 8px;
+            font-size: 0.85rem;
+            font-weight: 800;
+            text-align: center;
+            text-transform: uppercase;
+            text-shadow: 0 0 15px rgba(0, 255, 255, 0.7);
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00ffff;
+            z-index: 100;
+            text-align: center;
+            background: #000;
+            padding: 30px;
+            border-radius: 24px;
+            border: 2px solid #00ffff;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading" class="loading">
+        <div style="font-size: 1.2rem; font-weight: bold; margin-bottom: 15px;">CRYSTAL CLEAR AR</div>
+        <div style="width: 40px; height: 40px; border: 3px solid #111; border-top: 3px solid #00ffff; border-radius: 50%; animation: spin 0.8s linear infinite; margin: auto;"></div>
+    </div>
+
+    <style> @keyframes spin { to { transform: rotate(360deg); } } </style>
+
+    <video id="input_video" autoplay playsinline></video>
+    <div id="canvas-container"></div>
+    <canvas id="skeleton-canvas"></canvas>
+
+    <button id="open-ui" onclick="toggleUIVisibility(true)">SETTINGS</button>
+
+    <div id="ui-layer">
+        <button id="close-ui" onclick="toggleUIVisibility(false)">×</button>
+        <h1>ULTRA COSMIC SYSTEM</h1>
+        <div class="instruction"><span>🤏</span> Pinch: Morph | <span>👍</span> Thumb: Blast</div>
+        <div class="instruction"><span>🤙</span> Pinky: Shrink | <span>✊</span> Fist: Core</div>
+        <div class="instruction"><span>✌️</span> Spread: Zoom | <span>🖐️</span> Open: Nova</div>
+        
+        <div id="status">SPHERE</div>
+
+        <div class="button-group">
+            <button class="btn-toggle active-mode" id="ar-btn" onclick="toggleAR()">AR MODE</button>
+            <button class="btn-toggle" id="skel-btn" onclick="toggleSkeleton()">SKELETON</button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * 1. CONFIG
+         */
+        const isMobile = window.innerWidth < 600;
+        const CONFIG = {
+            particleCount: isMobile ? 6000 : 10000, 
+            palettes: [
+                [0x00ffff, 0xff00ff, 0x00ff00], 
+                [0xff3300, 0xffaa00, 0xff00ff], 
+                [0x00ffff, 0x0066ff, 0xffffff], 
+                [0xcc00ff, 0x00ffff, 0x00ff66], 
+                [0xffff00, 0xff00ff, 0x00ffff], 
+                [0xffffff, 0x888888, 0x444444]
+            ],
+            shapes: [
+                'Hyper Sphere', 
+                'Crystal Heart', 
+                'Saturn Dust', 
+                'Neon Helix', 
+                'Galactic Butterfly', 
+                'Infinite Torus', 
+                'Quantum Wave'
+            ]
+        };
+
+        let currentShapeIndex = 0;
+        let handData = null;
+        let pinchCooldown = false;
+        let arMode = true;
+        let skeletonEnabled = true;
+        let targetZoom = isMobile ? 42 : 35;
+        window.handState = 'neutral';
+
+        /**
+         * 2. THREE.JS ENGINE
+         */
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = targetZoom;
+
+        const renderer = new THREE.WebGLRenderer({ 
+            antialias: true, 
+            alpha: true,
+            precision: "highp",
+            powerPreference: "high-performance"
+        });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio); 
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const skeletonCanvas = document.getElementById('skeleton-canvas');
+        const ctx = skeletonCanvas.getContext('2d');
+        
+        function resize() {
+            skeletonCanvas.width = window.innerWidth;
+            skeletonCanvas.height = window.innerHeight;
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        /**
+         * 3. PARTICLE SYSTEM
+         */
+        const geometry = new THREE.BufferGeometry();
+        const posArray = new Float32Array(CONFIG.particleCount * 3);
+        const targetArray = new Float32Array(CONFIG.particleCount * 3);
+        const colorArray = new Float32Array(CONFIG.particleCount * 3);
+        const targetColorArray = new Float32Array(CONFIG.particleCount * 3);
+
+        for (let i = 0; i < CONFIG.particleCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 200;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: isMobile ? 0.45 : 0.35,
+            vertexColors: true,
+            transparent: true,
+            opacity: 1.0,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true
+        });
+
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
+
+        /**
+         * 4. SHAPE LOGIC
+         */
+        function setTargetShape(index) {
+            const palette = CONFIG.palettes[index % CONFIG.palettes.length];
+            const colors = palette.map(c => new THREE.Color(c));
+
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                let x, y, z;
+                const i3 = i * 3;
+                
+                if (index === 0) { // Sphere
+                    const phi = Math.acos(-1 + (2 * i) / CONFIG.particleCount);
+                    const theta = Math.sqrt(CONFIG.particleCount * Math.PI) * phi;
+                    x = 15 * Math.cos(theta) * Math.sin(phi);
+                    y = 15 * Math.sin(theta) * Math.sin(phi);
+                    z = 15 * Math.cos(phi);
+                } else if (index === 1) { // Heart
+                    const t = Math.random() * Math.PI * 2;
+                    x = 16 * Math.pow(Math.sin(t), 3);
+                    y = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
+                    z = (Math.random() - 0.5) * 8;
+                    x *= 0.8; y *= 0.8;
+                } else if (index === 2) { // Saturn Rings
+                    const r = 16 + Math.random() * 10;
+                    const a = Math.random() * Math.PI * 2;
+                    x = r * Math.cos(a);
+                    y = (Math.random() - 0.5) * 2;
+                    z = r * Math.sin(a);
+                    if(i < CONFIG.particleCount * 0.3) {
+                        const rIn = Math.random() * 8;
+                        const b = Math.random() * Math.PI * 2;
+                        const c = Math.random() * Math.PI;
+                        x = rIn * Math.sin(c) * Math.cos(b);
+                        y = rIn * Math.sin(c) * Math.sin(b);
+                        z = rIn * Math.cos(c);
+                    }
+                } else if (index === 3) { // DNA Helix
+                    const t = (i / CONFIG.particleCount) * 50;
+                    const side = i % 2 === 0 ? 1 : -1;
+                    x = Math.cos(t) * 8 * side;
+                    z = Math.sin(t) * 8 * side;
+                    y = t * 1.5 - 35;
+                } else if (index === 4) { // Galactic Butterfly
+                    const t = (Math.random() * 2 - 1) * Math.PI;
+                    const e = 2.71828;
+                    const r = Math.pow(e, Math.cos(t)) - 2 * Math.cos(4*t) + Math.pow(Math.sin(t/12), 5);
+                    x = r * Math.sin(t) * 8;
+                    y = r * Math.cos(t) * 8;
+                    z = (Math.random() - 0.5) * 10;
+                } else if (index === 5) { // Torus
+                    const u = Math.random() * Math.PI * 2;
+                    const v = Math.random() * Math.PI * 2;
+                    const R = 15;
+                    const r = 6;
+                    x = (R + r * Math.cos(v)) * Math.cos(u);
+                    y = (R + r * Math.cos(v)) * Math.sin(u);
+                    z = r * Math.sin(v);
+                } else if (index === 6) { // Quantum Wave
+                    const row = i % 100;
+                    const col = Math.floor(i / 100);
+                    x = (row - 50) * 0.8;
+                    z = (col - 50) * 0.8;
+                    y = Math.sin(x * 0.2) * Math.cos(z * 0.2) * 10;
+                }
+
+                targetArray[i3] = x;
+                targetArray[i3+1] = y;
+                targetArray[i3+2] = z;
+                
+                const c = colors[i % colors.length];
+                targetColorArray[i3] = c.r;
+                targetColorArray[i3+1] = c.g;
+                targetColorArray[i3+2] = c.b;
+            }
+            const statusEl = document.getElementById('status');
+            statusEl.innerText = CONFIG.shapes[index];
+            statusEl.style.color = '#' + colors[0].getHexString();
+        }
+
+        setTargetShape(0);
+
+        /**
+         * 5. HAND TRACKING & CUSTOM GESTURES
+         */
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+
+        hands.onResults((results) => {
+            document.getElementById('loading').style.display = 'none';
+            ctx.clearRect(0, 0, skeletonCanvas.width, skeletonCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                handData = landmarks;
+
+                if (skeletonEnabled) {
+                    ctx.shadowBlur = 15; ctx.shadowColor = "#00ffff";
+                    drawConnectors(ctx, landmarks, HAND_CONNECTIONS, {color: '#00ffff', lineWidth: 4});
+                    drawLandmarks(ctx, landmarks, {color: '#ffffff', lineWidth: 1, radius: 3});
+                }
+
+                const indexTip = landmarks[8];
+                const thumbTip = landmarks[4];
+                const middleTip = landmarks[12];
+                const pinkyTip = landmarks[20];
+                const wrist = landmarks[0];
+                
+                // PINCH -> Morph
+                const morphDist = Math.hypot(thumbTip.x - indexTip.x, thumbTip.y - indexTip.y);
+                if (morphDist < 0.04 && !pinchCooldown) {
+                    currentShapeIndex = (currentShapeIndex + 1) % CONFIG.shapes.length;
+                    setTargetShape(currentShapeIndex);
+                    pinchCooldown = true;
+                    setTimeout(() => pinchCooldown = false, 800);
+                }
+
+                // ZOOM
+                const zoomDist = Math.hypot(indexTip.x - middleTip.x, indexTip.y - middleTip.y);
+                const baseZ = isMobile ? 42 : 35;
+                targetZoom = baseZ + (0.08 - zoomDist) * 120;
+                targetZoom = Math.max(10, Math.min(95, targetZoom));
+
+                // Hand State Detection
+                const isThumbUp = thumbTip.y < landmarks[3].y && thumbTip.y < landmarks[8].y && thumbTip.y < landmarks[12].y && thumbTip.y < landmarks[16].y && thumbTip.y < landmarks[20].y;
+                const isPinkyOnly = pinkyTip.y < landmarks[19].y && indexTip.y > landmarks[7].y && middleTip.y > landmarks[11].y;
+                const openness = Math.hypot(wrist.x - middleTip.x, wrist.y - middleTip.y);
+
+                if (isThumbUp && openness < 0.35) {
+                    window.handState = 'blast'; // Blast Effect
+                } else if (isPinkyOnly) {
+                    window.handState = 'shrink'; // Shrink Effect
+                } else if (openness > 0.48) {
+                    window.handState = 'explode';
+                } else if (openness < 0.22) {
+                    window.handState = 'fist';
+                } else {
+                    window.handState = 'neutral';
+                }
+            } else {
+                handData = null;
+                window.handState = 'neutral';
+            }
+        });
+
+        const videoElement = document.getElementById('input_video');
+        const cameraFeed = new Camera(videoElement, {
+            onFrame: async () => await hands.send({image: videoElement}),
+            width: 1280, height: 720
+        });
+        cameraFeed.start();
+
+        /**
+         * 6. UI ACTIONS
+         */
+        function toggleAR() {
+            arMode = !arMode;
+            videoElement.style.opacity = arMode ? '1' : '0';
+            document.getElementById('ar-btn').classList.toggle('active-mode', arMode);
+        }
+
+        function toggleSkeleton() {
+            skeletonEnabled = !skeletonEnabled;
+            document.getElementById('skel-btn').classList.toggle('active-mode', skeletonEnabled);
+        }
+
+        function toggleUIVisibility(show) {
+            document.getElementById('ui-layer').classList.toggle('hidden', !show);
+            document.getElementById('open-ui').style.display = show ? 'none' : 'block';
+        }
+
+        /**
+         * 7. ANIMATION
+         */
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            camera.position.z += (targetZoom - camera.position.z) * 0.15;
+
+            const pos = geometry.attributes.position.array;
+            const col = geometry.attributes.color.array;
+            
+            let hX = 0, hY = 0, active = false;
+            if (handData) {
+                hX = (handData[9].x - 0.5) * 75; 
+                hY = -(handData[9].y - 0.5) * 55;
+                active = true;
+            }
+
+            for (let i = 0; i < CONFIG.particleCount; i++) {
+                const i3 = i * 3;
+                
+                // Default target behavior
+                let lerpSpeed = 0.12;
+                let tx = targetArray[i3];
+                let ty = targetArray[i3+1];
+                let tz = targetArray[i3+2];
+
+                // Global State Modifiers
+                if (window.handState === 'shrink') {
+                    tx *= 0.05; ty *= 0.05; tz *= 0.05;
+                    lerpSpeed = 0.2;
+                } else if (window.handState === 'blast') {
+                    tx *= 5.0; ty *= 5.0; tz *= 5.0;
+                    lerpSpeed = 0.05;
+                }
+
+                pos[i3] += (tx - pos[i3]) * lerpSpeed;
+                pos[i3+1] += (ty - pos[i3+1]) * lerpSpeed;
+                pos[i3+2] += (tz - pos[i3+2]) * lerpSpeed;
+
+                col[i3] += (targetColorArray[i3] - col[i3]) * 0.1;
+                col[i3+1] += (targetColorArray[i3+1] - col[i3+1]) * 0.1;
+                col[i3+2] += (targetColorArray[i3+2] - col[i3+2]) * 0.1;
+
+                // Local Attraction/Repulsion
+                if (active) {
+                    const dx = pos[i3] - hX;
+                    const dy = pos[i3+1] - hY;
+                    const d = Math.sqrt(dx*dx + dy*dy) + 0.1;
+
+                    if (window.handState === 'fist') { 
+                        pos[i3] -= dx / d * 0.8;
+                        pos[i3+1] -= dy / d * 0.8;
+                    } else if (window.handState === 'explode') { 
+                        if (d < 25) {
+                            pos[i3] += dx / d * 1.5;
+                            pos[i3+1] += dy / d * 1.5;
+                        }
+                    }
+                }
+            }
+
+            geometry.attributes.position.needsUpdate = true;
+            geometry.attributes.color.needsUpdate = true;
+            
+            points.rotation.y += active ? (hX * 0.0008 - points.rotation.y) * 0.1 : 0.006;
+            points.rotation.x += active ? (hY * 0.0008 - points.rotation.x) * 0.1 : 0.002;
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+</html>
